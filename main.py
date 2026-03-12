@@ -1,4 +1,4 @@
-from diffmap_view.gui.main import start_diffmap_view
+from diffmap.gui.main import start_diffmap
 
 if __name__ == "__main__":
-    start_diffmap_view()
+    start_diffmap()

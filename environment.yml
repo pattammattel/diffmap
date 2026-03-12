@@ -1,4 +1,4 @@
-name: diffmap_view-env
+name: diffmap-env
 channels:
   - conda-forge
 dependencies:
