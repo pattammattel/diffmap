@@ -2,9 +2,43 @@
 authors = ["Ajith Pattammattel <pattammattel@bnl.gov>"]
 channels = ["conda-forge"]
 name = "diffmap"
-platforms = ["osx-arm64"]
 version = "0.1.0"
+
+platforms = ["osx-arm64", "linux-64", "win-64"] 
+
+[system-requirements]
+libc = { family = "glibc", version = "2.34" }
+
+# --- PLATFORM SPECIFIC TARGETS ---
+
+[target.linux-64.dependencies]
+pyqt6 = ">=6.8.1,<7"
+
+[target.osx-arm64.pypi-dependencies]
+pyqt6 = ">=6.8.1,<7"
+
+[target.win-64.pypi-dependencies]
+pyqt6 = ">=6.8.1,<7"
+
 
 [tasks]
 
 [dependencies]
+h5py = ">=3.15.1,<4"
+numpy = ">=2.4.2,<3"
+pandas = ">=3.0.1,<4"
+pyqtgraph = ">=0.14.0,<0.15"
+pystackreg = ">=0.2.8,<0.3"
+xraydb = ">=4.5.8,<5"
+ipython = ">=9.11.0,<10"
+jupyterlab = ">=4.5.6,<5"
+ipykernel = ">=7.2.0,<8"
+tifffile = ">=2026.3.3,<2027"
+pims = ">=0.7,<0.8"
+doct = ">=1.1.0,<2"
+pytz = ">=2025.2,<2026"
+xarray = ">=2026.2.0,<2027"
+
+[pypi-dependencies]
+hxntools = ">=0.6.5, <0.7"
+bluesky-tiled-plugins = ">=2.0.2, <3"

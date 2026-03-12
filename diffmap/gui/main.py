@@ -1,7 +1,7 @@
 import sys
 import logging
 from PyQt6 import QtWidgets
-from .windows.diffmap_window import diffmapWindow
+from .windows.diffmap_view_window import DiffMapWindow
 from . import UI_DIR
 
 def start_diffmap():
@@ -14,7 +14,7 @@ def start_diffmap():
         with open(qss_file, "r", encoding="utf-8") as f:
             app.setStyleSheet(f.read())
 
-    win = diffmapWindow()
+    win = DiffMapWindow()
     win.show()
     sys.exit(app.exec())
 

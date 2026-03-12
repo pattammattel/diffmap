@@ -20,7 +20,7 @@ from PyQt6.QtCore import Qt,QObject, QTimer, QThread, pyqtSignal
 
 
 warnings.filterwarnings('ignore', category=RuntimeWarning)
-from utils.diff_fileio import *
+from ...utils.diff_fileio import *
 from diffmap.gui import UI_DIR
 STYLE_PATH = UI_DIR / 'css' / 'uswds.qss'
 
