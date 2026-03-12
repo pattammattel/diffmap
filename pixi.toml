@@ -1,0 +1,10 @@
+[workspace]
+authors = ["Ajith Pattammattel <pattammattel@bnl.gov>"]
+channels = ["conda-forge"]
+name = "diffmap"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
