@@ -568,8 +568,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
     def MouseClickEvent_xrf(self, event = QtCore.QEvent):
 
-        if event.type() == QtCore.QEvent.GraphicsSceneMouseDoubleClick:
-            if event.button() == QtCore.Qt.LeftButton:
+        if event.type() == QtCore.QEvent.Type.GraphicsSceneMouseDoubleClick:
+            if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 self.points = []
                 pos = self.img_item_xrf.mapToParent(event.pos())
                 i, j = int(np.floor(pos.x())), int(np.floor(pos.y()))
@@ -628,8 +628,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
     def MouseClickEvent_diff_sum(self, event = QtCore.QEvent):
 
-        if event.type() == QtCore.QEvent.GraphicsSceneMouseDoubleClick:
-            if event.button() == QtCore.Qt.LeftButton:
+        if event.type() == QtCore.QEvent.Type.GraphicsSceneMouseDoubleClick:
+            if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 self.points = []
                 pos = self.img_item_diff_sum.mapToParent(event.pos())
                 i, j = int(np.floor(pos.x())), int(np.floor(pos.y()))
