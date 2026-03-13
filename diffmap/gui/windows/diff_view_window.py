@@ -12,13 +12,14 @@ from pyqtgraph import functions as fn
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 from scipy.ndimage import center_of_mass
 from functools import wraps
-from PyQt5 import QtWidgets, uic, QtCore, QtGui, QtTest
-from PyQt5.QtWidgets import QMessageBox, QFileDialog,QErrorMessage,QDialog, QLabel, QVBoxLayout, QProgressBar
-from PyQt5.QtCore import Qt,QObject, QTimer, QThread, pyqtSignal
-ui_path = os.path.dirname(os.path.abspath(__file__))
+from PyQt6 import QtWidgets, uic, QtCore, QtGui, QtTest
+from PyQt6.QtWidgets import QMessageBox, QFileDialog,QErrorMessage,QDialog, QLabel, QVBoxLayout, QProgressBar
+from PyQt6.QtCore import Qt,QObject, QTimer, QThread, pyqtSignal
+from pathlib import Path
+ui_path = Path(__file__).parent.parent / "layout"
 import warnings
 warnings.filterwarnings('ignore', category=RuntimeWarning)
-from diff_fileio import *
+from diffmap.utils.diff_fileio import *
 
 
 #beamline specific
@@ -66,9 +67,9 @@ class DiffViewWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(DiffViewWindow, self).__init__()
         print("before ui load")
-        uic.loadUi(os.path.join(ui_path,'diff_view.ui'), self)
+        uic.loadUi(str(ui_path / 'diff_view.ui'), self)
 
-        self.apply_stylesheet(os.path.join(ui_path,"uswds_style.qss"))
+        self.apply_stylesheet(str(ui_path / 'css' / 'uswds_style.qss'))
         # After loading the UI
         central_widget = self.centralWidget()
         layout = central_widget.layout()
@@ -78,10 +79,32 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
         print("ui loaded")
         
-        self.setup_terminal_redirect()
+        print("Skipping terminal redirect for now...")
+        # TODO: Re-enable terminal redirect after fixing the issue
+        # try:
+        #     print("Inside try block...")
+        #     sys.stdout.flush()
+        #     if hasattr(self, 'terminal_output'):
+        #         print("terminal_output exists, setting up redirect...")
+        #         sys.stdout.flush()
+        #         self.setup_terminal_redirect()
+        #         print("Terminal redirect setup successful!")
+        #     else:
+        #         print("terminal_output widget not found, skipping terminal redirect")
+        # except Exception as e:
+        #     # Make sure we can see this error
+        #     sys.stdout = sys.__stdout__
+        #     sys.stderr = sys.__stderr__
+        #     print(f"Terminal redirect setup failed: {e}")
+        #     import traceback
+        #     traceback.print_exc()
+        #     # Continue without terminal redirect
+        
         #sys.stdout = EmittingStream(text_written=self.normalOutputWritten)
         #sys.stderr = EmittingStream(text_written=self.errorOutputWritten)
 
+        print("Initializing variables...")
+        sys.stdout.flush()
         self.prev_config = {} # TODO, record the workflow later
         self.wd = None
         self.xrf_img = None
@@ -124,12 +147,14 @@ class DiffViewWindow(QtWidgets.QMainWindow):
  
 
         #beamline specific paramaters
+        print("Setting up UI controls...")
         self.cb_norm_scalars.addItems(scalars_list)
         self.cb_det_list.addItems(detector_list)
         self.cb_det_list.setCurrentIndex(0)
         self.cb_norm_scalars.setCurrentIndex(4)
 
         #connections
+        print("Connecting signals...")
         self.pb_select_wd.clicked.connect(self.choose_wd)
         self.pb_show_mask.clicked.connect(self.get_mask_from_roi)
         self.pb_load_data_from_db.clicked.connect(self.load_from_db)
@@ -138,7 +163,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         self.cb_xrf_elem_list.currentIndexChanged.connect(self.display_xrf_img)
         self.pb_batch_export.clicked.connect(self.do_batch_export)
     
-        QtWidgets.qApp.aboutToQuit.connect(self.restore_stdout)
+        QtWidgets.QApplication.instance().aboutToQuit.connect(self.restore_stdout)
+        print("DiffViewWindow initialization complete!")
 
     def restore_stdout(self):
         sys.stdout = sys.__stdout__
@@ -146,32 +172,58 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
 
     def setup_terminal_redirect(self):
+        # Check if terminal_output widget exists
+        if not hasattr(self, 'terminal_output'):
+            print("Warning: terminal_output widget not found in UI, skipping terminal redirect")
+            return
+        
+        print("Creating EmittingStream objects...")
+        sys.stdout.flush()
         self.stdout_stream = EmittingStream()
         self.stderr_stream = EmittingStream()
 
+        print("Connecting signals...")
+        sys.stdout.flush()
         self.stdout_stream.text_written.connect(self.append_stdout)
         self.stderr_stream.text_written.connect(self.append_stderr)
 
+        print("Redirecting stdout and stderr...")
+        sys.stdout.flush()
         sys.stdout = self.stdout_stream
         sys.stderr = self.stderr_stream
+        print("Terminal redirect complete!")
 
     def append_stdout(self, text):
-        QtTest.QTest.qWait(100)
-        cursor = self.terminal_output.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.End)
-        cursor.insertText(text)
-        self.terminal_output.setTextCursor(cursor)
-        self.terminal_output.ensureCursorVisible()
+        try:
+            cursor = self.terminal_output.textCursor()
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+            cursor.insertText(text)
+            self.terminal_output.setTextCursor(cursor)
+            self.terminal_output.ensureCursorVisible()
+        except Exception as e:
+            # If terminal output fails, restore stdout and print error
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            print(f"Error in append_stdout: {e}")
+            import traceback
+            traceback.print_exc()
 
     def append_stderr(self, text):
-        QtTest.QTest.qWait(100)
-        cursor = self.terminal_output.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.End)
-        fmt = QtGui.QTextCharFormat()
-        fmt.setForeground(QtGui.QColor("red"))
-        cursor.insertText(text, fmt)
-        self.terminal_output.setTextCursor(cursor)
-        self.terminal_output.ensureCursorVisible()
+        try:
+            cursor = self.terminal_output.textCursor()
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+            fmt = QtGui.QTextCharFormat()
+            fmt.setForeground(QtGui.QColor("red"))
+            cursor.insertText(text, fmt)
+            self.terminal_output.setTextCursor(cursor)
+            self.terminal_output.ensureCursorVisible()
+        except Exception as e:
+            # If terminal output fails, restore stdout and print error
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            print(f"Error in append_stderr: {e}")
+            import traceback
+            traceback.print_exc()
 
 
     
