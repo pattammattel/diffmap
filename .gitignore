@@ -6,6 +6,8 @@ build/
 dist/
 .vscode/
 *.log
+*.h5
+*.csv
 # pixi environments
 .pixi/*
 !.pixi/config.toml
