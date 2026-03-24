@@ -198,7 +198,11 @@ def get_all_xrf_roi_data(hdr):
 
     #print(f"{elem_list = }")
     print(f"[DATA] fetching XRF ROIs")
-    scan_dim = get_flyscan_dimensions(hdr)
+    try:
+        scan_dim = get_flyscan_dimensions(hdr)
+    except Exception as e:
+        print(f"[DATA ERROR] cannot get scan dimensions, defaulting to (1, n_events). Error: {e}")
+        scan_dim = (1, len(hdr.table()))
     xrf_stack_list = []
 
     for elem in sorted(elem_list):
