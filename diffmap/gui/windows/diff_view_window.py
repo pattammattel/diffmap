@@ -23,7 +23,7 @@ from diffmap.utils.diff_fileio import *
 
 
 #beamline specific
-detector_list = ["merlin1","merlin2", "eiger1", "eiger2_image"]
+detector_list = ["merlin1","merlin2", "eiger1", "eiger2"]
 scalars_list = ["None", "sclr1_ch1","sclr1_ch2","sclr1_ch3","sclr1_ch4","sclr1_ch5"]
 
 print("passed module loading")

@@ -37,10 +37,10 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.simplefilter(action='ignore', category=UserWarning)
 
 
-
-
-
-det_params = {'merlin1':55, "merlin2":55, "eiger2_image":75}
+# Detector parameters: pixel size or other detector-specific settings
+# Note: Both eiger1/eiger2 and eiger1_image/eiger2_image are included
+# because scan plans use "eiger1", but data is saved as "eiger1_image"
+det_params = {'merlin1':55, "merlin2":55, "eiger1":75, "eiger2":75, "eiger1_image":75, "eiger2_image":75}
 
 def normalize_detector_name(det_name):
     """
@@ -56,6 +56,15 @@ def normalize_detector_name(det_name):
     -------
     str
         Normalized detector name for data access
+        
+    Examples
+    --------
+    >>> normalize_detector_name("eiger1")
+    'eiger1_image'
+    >>> normalize_detector_name("eiger2_image")
+    'eiger2_image'
+    >>> normalize_detector_name("merlin1")
+    'merlin1'
     """
     if det_name is None:
         return None
@@ -490,7 +499,13 @@ def export_fly2d_as_h5_single(
     detectors = ','.join(start_doc.get('detectors', []))
     exit_status = stop_doc.get('exit_status', '') if stop_doc else ''
     os_user = os.getlogin() if hasattr(os, 'getlogin') else getpass.getuser()
-    raw_files = get_path(sid, det)
+    
+    # Normalize detector name for data access (e.g., eiger1 -> eiger1_image)
+    det_data = normalize_detector_name(det)
+    if det_data != det:
+        print(f"[DETECTOR] Normalized detector name: {det} -> {det_data} for data access")
+    
+    raw_files = get_path(sid, det_data)
     raw_data_path = raw_files[0] if raw_files else ''
     if exit_status != '' and exit_status != 'success':
         print(f"[EXPORT] Scan {sid} exit_status is {exit_status}, skipping export")
@@ -513,7 +528,7 @@ def export_fly2d_as_h5_single(
         with h5py.File(out_fn, mode) as f:
             grp = f.require_group(f"/diff_data/{det}")
             if not copied:
-                raw = _load_detector_stack(hdr, det)  # shape (n_steps, ry, rx)
+                raw = _load_detector_stack(hdr, det_data)  # Use normalized detector name
                 grp.create_dataset(
                     "det_images",
                     data=raw,
@@ -630,7 +645,13 @@ def export_relscan_as_h5_single(
     detectors = ','.join(start_doc.get('detectors', []))
     exit_status = stop_doc.get('exit_status', '') if stop_doc else ''
     os_user = os.getlogin() if hasattr(os, 'getlogin') else getpass.getuser()
-    raw_files = get_path(sid, det)
+    
+    # Normalize detector name for data access (e.g., eiger1 -> eiger1_image)
+    det_data = normalize_detector_name(det)
+    if det_data != det:
+        print(f"[DETECTOR] Normalized detector name: {det} -> {det_data} for data access")
+    
+    raw_files = get_path(sid, det_data)
     raw_data_path = raw_files[0] if raw_files else ''
     if exit_status != '' and exit_status != 'success':
         print(f"[EXPORT] Scan {sid} exit_status is {exit_status}, skipping export")
@@ -673,7 +694,6 @@ def export_relscan_as_h5_single(
     scan_table  = get_scan_metadata(hdr)
     out_fn = os.path.join(wd, f"scan_{sid}_{det}.h5")
     copied = False
-    raw_files = get_path(sid, det)
     if raw_files:
         raw_data_path = raw_files[0]
     if copy_if_possible and len(raw_files) == 1:
@@ -685,7 +705,7 @@ def export_relscan_as_h5_single(
         with h5py.File(out_fn, mode) as f:
             grp = f.require_group(f"/diff_data/{det}")
             if not copied:
-                raw = _load_detector_stack(hdr, det)
+                raw = _load_detector_stack(hdr, det_data)  # Use normalized detector name
                 if len(shape) == 2:
                     raw = raw.reshape(shape[0], shape[1], *raw.shape[1:])
                 elif len(shape) == 1:
