@@ -357,8 +357,13 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         fname_token = fpath.stem.split("_")[-1].lower() if "_" in fpath.stem else ""
 
         # Case-insensitive membership check and canonicalization
+        # Also handle eiger detectors that might have _image suffix in filename
         allowed_lower = {d.lower(): d for d in detector_list}
-        file_det = allowed_lower.get(fname_token)  # canonical name or None
+        
+        # Strip _image suffix from filename token if present (for eiger detectors)
+        fname_token_clean = fname_token[:-6] if fname_token.endswith('_image') else fname_token
+        
+        file_det = allowed_lower.get(fname_token_clean)  # canonical name or None
 
         if file_det:
             # Filename matches an allowed detector
@@ -367,10 +372,11 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             det = file_det
         else:
             # Filename does not encode a known detector -> use user's input
-            det = user_det if user_det else ""
+            # Strip _image if present in user input (for eiger)
+            det = user_det[:-6] if user_det.endswith('_image') else user_det
             if not det:
                 print("No detector found in filename and none provided by user.")
-            elif user_det_l not in allowed_lower:
+            elif user_det_l not in allowed_lower and det.lower() not in allowed_lower:
                 # Not blocking, just warn (per your rule we still go with user's input)
                 print(f"Warning: '{user_det}' is not in the allowed list {detector_list}; proceeding with user's value.")
 

@@ -74,6 +74,38 @@ def normalize_detector_name(det_name):
         return f"{det_name}_image"
     return det_name
 
+def get_plan_detector_name(det_name):
+    """
+    Get the detector name as used in scan plans (strips _image suffix from Eiger detectors).
+    This is the reverse of normalize_detector_name.
+    
+    Parameters
+    ----------
+    det_name : str
+        Detector name (possibly with _image suffix)
+        
+    Returns
+    -------
+    str
+        Detector name as used in scan plans (without _image suffix for Eiger)
+        
+    Examples
+    --------
+    >>> get_plan_detector_name("eiger1_image")
+    'eiger1'
+    >>> get_plan_detector_name("eiger2")
+    'eiger2'
+    >>> get_plan_detector_name("merlin1")
+    'merlin1'
+    """
+    if det_name is None:
+        return None
+    det_lower = det_name.lower()
+    # Strip _image suffix for eiger detectors
+    if 'eiger' in det_lower and det_lower.endswith('_image'):
+        return det_name[:-6]  # Remove '_image' (6 characters)
+    return det_name
+
 def parse_scan_range(str_scan_range):
     """
     Parse a string representing a list or range of scan numbers.
@@ -487,7 +519,15 @@ def export_fly2d_as_h5_single(
     copy_if_possible=True,
     save_and_return=False
 ):
+    """
+    Export a 2D fly scan to HDF5 format.
     
+    Note: Detector names are handled as follows:
+    - Input 'det' can be either plan name (e.g., 'eiger2') or data name (e.g., 'eiger2_image')
+    - Validation checks against plan name (without _image)
+    - Data access uses normalized name (with _image for Eiger detectors)
+    - Output filename uses the input detector name
+    """
         
     start_doc = hdr.start
     if 'scan' not in start_doc:
@@ -502,6 +542,8 @@ def export_fly2d_as_h5_single(
     
     # Normalize detector name for data access (e.g., eiger1 -> eiger1_image)
     det_data = normalize_detector_name(det)
+    det_plan = get_plan_detector_name(det)  # Get plan name for validation
+    
     if det_data != det:
         print(f"[DETECTOR] Normalized detector name: {det} -> {det_data} for data access")
     
@@ -510,8 +552,10 @@ def export_fly2d_as_h5_single(
     if exit_status != '' and exit_status != 'success':
         print(f"[EXPORT] Scan {sid} exit_status is {exit_status}, skipping export")
         return {"scan_id": sid, "scan_type": scan_type, "detectors": detectors, "exit_status": exit_status, "status": "skipped_failed", "raw_data_path": raw_data_path, "os_user": os_user}
-    if det not in start_doc["scan"].get("detectors", []):
-        raise ValueError(f"[DETECTOR] Scan {sid} does not use detector {det}")
+    
+    # Check using plan name (without _image for eiger)
+    if det_plan not in start_doc["scan"].get("detectors", []):
+        raise ValueError(f"[DETECTOR] Scan {sid} does not use detector {det_plan} (you specified: {det})")
     print(f"[SCAN TYPE] Scan {sid} uses plan 2D_FLY_PANDA")
     common = _load_scan_common(hdr, mon)
     if not common:
