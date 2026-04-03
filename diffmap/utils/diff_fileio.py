@@ -40,7 +40,7 @@ warnings.simplefilter(action='ignore', category=UserWarning)
 
 
 
-det_params = {'merlin1':55, "merlin2":55, "eiger2_images":75}
+det_params = {'merlin1':55, "merlin2":55, "eiger2_image":75}
 
 def parse_scan_range(str_scan_range):
     """
