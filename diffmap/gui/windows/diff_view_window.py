@@ -784,7 +784,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         p1.addItem(img1)
         hist1 = pg.HistogramLUTItem()
         hist1.setImageItem(img1)
-        hist1.gradient.setColorMap(pg.colormap.get("bipolar"))
+        hist1.gradient.loadPreset("bipolar")
         graphics_widget.addItem(hist1, row=0, col=1)
         
         # Plot 2: Masked Diff Sum (top-right)
@@ -794,7 +794,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         p2.addItem(img2)
         hist2 = pg.HistogramLUTItem()
         hist2.setImageItem(img2)
-        hist2.gradient.setColorMap(pg.colormap.get("viridis"))
+        hist2.gradient.loadPreset("viridis")
         graphics_widget.addItem(hist2, row=0, col=3)
         
         # Plot 3: Masked Diff Image (bottom-left)
@@ -804,7 +804,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         p3.addItem(img3)
         hist3 = pg.HistogramLUTItem()
         hist3.setImageItem(img3)
-        hist3.gradient.setColorMap(pg.colormap.get("viridis"))
+        hist3.gradient.loadPreset("viridis")
         graphics_widget.addItem(hist3, row=1, col=2)
         
         # Add close button
