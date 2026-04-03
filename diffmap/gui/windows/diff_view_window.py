@@ -119,6 +119,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         self.create_pointer()
         self.points = [] # Record Points
         self.roi_exists = False
+        self.mask_result_windows = []  # Store references to mask result windows
+        self.mask_window_counter = 0  # Counter for unique window titles
         self.display_param = {
                               "diff_wd":None,
                               "xrf_wd":None,
@@ -169,6 +171,11 @@ class DiffViewWindow(QtWidgets.QMainWindow):
     def restore_stdout(self):
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
+    
+    def closeEvent(self, event):
+        """Clean up when main window closes"""
+        self.close_all_mask_windows()
+        event.accept()
 
 
     def setup_terminal_redirect(self):
@@ -766,10 +773,15 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         return self.masked_diff_sum,self.masked_diff_img
     
     def show_mask_results_dialog(self, mask2D, masked_diff_sum, masked_diff_img):
-        """Display mask results in a single dialog window with all plots"""
+        """Display mask results in a non-modal window with all plots for comparison"""
+        self.mask_window_counter += 1
+        
         dialog = QDialog(self)
-        dialog.setWindowTitle("Mask Results")
+        dialog.setWindowTitle(f"Mask Results #{self.mask_window_counter}")
         dialog.resize(1200, 800)
+        
+        # Make the dialog stay on top but non-modal
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowType.Window)
         
         layout = QVBoxLayout(dialog)
         
@@ -807,12 +819,38 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         hist3.gradient.loadPreset("viridis")
         graphics_widget.addItem(hist3, row=1, col=2)
         
-        # Add close button
-        btn_close = QtWidgets.QPushButton("Close")
-        btn_close.clicked.connect(dialog.accept)
-        layout.addWidget(btn_close)
+        # Button layout
+        button_layout = QtWidgets.QHBoxLayout()
         
-        dialog.exec()
+        # Add close this window button
+        btn_close = QtWidgets.QPushButton("Close This Window")
+        btn_close.clicked.connect(lambda: self.close_mask_window(dialog))
+        button_layout.addWidget(btn_close)
+        
+        # Add close all windows button
+        btn_close_all = QtWidgets.QPushButton("Close All Mask Windows")
+        btn_close_all.clicked.connect(self.close_all_mask_windows)
+        button_layout.addWidget(btn_close_all)
+        
+        layout.addLayout(button_layout)
+        
+        # Store reference and show non-modally
+        self.mask_result_windows.append(dialog)
+        dialog.show()
+    
+    def close_mask_window(self, dialog):
+        """Close a specific mask result window and remove from list"""
+        if dialog in self.mask_result_windows:
+            self.mask_result_windows.remove(dialog)
+        dialog.close()
+    
+    def close_all_mask_windows(self):
+        """Close all open mask result windows"""
+        for dialog in self.mask_result_windows:
+            dialog.close()
+        self.mask_result_windows.clear()
+        self.mask_window_counter = 0
+        print("All mask result windows closed")
     
     def save_mask_data(self):
         """Save mask and masked diff sum data as both TIFF and CSV files in a versioned folder"""
