@@ -23,7 +23,7 @@ from diffmap.utils.diff_fileio import *
 
 
 #beamline specific
-detector_list = ["merlin1","merlin2", "eiger1", "eiger2_image"]
+detector_list = ["merlin1","merlin2", "eiger1", "eiger2"]
 scalars_list = ["None", "sclr1_ch1","sclr1_ch2","sclr1_ch3","sclr1_ch4","sclr1_ch5"]
 
 print("passed module loading")
@@ -119,6 +119,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         self.create_pointer()
         self.points = [] # Record Points
         self.roi_exists = False
+        self.mask_result_windows = []  # Store references to mask result windows
+        self.mask_window_counter = 0  # Counter for unique window titles
         self.display_param = {
                               "diff_wd":None,
                               "xrf_wd":None,
@@ -169,6 +171,11 @@ class DiffViewWindow(QtWidgets.QMainWindow):
     def restore_stdout(self):
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
+    
+    def closeEvent(self, event):
+        """Clean up when main window closes"""
+        self.close_all_mask_windows()
+        event.accept()
 
 
     def setup_terminal_redirect(self):
@@ -350,8 +357,13 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         fname_token = fpath.stem.split("_")[-1].lower() if "_" in fpath.stem else ""
 
         # Case-insensitive membership check and canonicalization
+        # Also handle eiger detectors that might have _image suffix in filename
         allowed_lower = {d.lower(): d for d in detector_list}
-        file_det = allowed_lower.get(fname_token)  # canonical name or None
+        
+        # Strip _image suffix from filename token if present (for eiger detectors)
+        fname_token_clean = fname_token[:-6] if fname_token.endswith('_image') else fname_token
+        
+        file_det = allowed_lower.get(fname_token_clean)  # canonical name or None
 
         if file_det:
             # Filename matches an allowed detector
@@ -360,10 +372,11 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             det = file_det
         else:
             # Filename does not encode a known detector -> use user's input
-            det = user_det if user_det else ""
+            # Strip _image if present in user input (for eiger)
+            det = user_det[:-6] if user_det.endswith('_image') else user_det
             if not det:
                 print("No detector found in filename and none provided by user.")
-            elif user_det_l not in allowed_lower:
+            elif user_det_l not in allowed_lower and det.lower() not in allowed_lower:
                 # Not blocking, just warn (per your rule we still go with user's input)
                 print(f"Warning: '{user_det}' is not in the allowed list {detector_list}; proceeding with user's value.")
 
@@ -753,17 +766,10 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         print(f"{np.shape(self.single_diff) = }")
         print(f"{self.mask2D.shape}")
 
-        plot1 = pg.image(self.mask2D)
-        plot1.setPredefinedGradient("bipolar")
-        # plot2 = pg.image(self.single_diff*self.mask2D)
-        # plot2.setPredefinedGradient("bipolar")
-
         masked_diff_sum, masked_diff_img = self.apply_mask_to_diff_stack(self.diff_stack,self.mask2D)
-        plot3 = pg.image(masked_diff_sum)
-        plot3.setPredefinedGradient("viridis")
         
-        plot4 = pg.image(masked_diff_img)
-        plot4.setPredefinedGradient("viridis")
+        # Show all plots in a single dialog window
+        self.show_mask_results_dialog(self.mask2D, masked_diff_sum, masked_diff_img)
 
     def apply_mask_to_diff_stack(self,diff_data_4d, mask):
 
@@ -771,6 +777,86 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
         self.masked_diff_sum, self.masked_diff_img = np.sum(masked_stack,axis = (-1,-2)), np.sum(masked_stack,axis = (0,1))
         return self.masked_diff_sum,self.masked_diff_img
+    
+    def show_mask_results_dialog(self, mask2D, masked_diff_sum, masked_diff_img):
+        """Display mask results in a non-modal window with all plots for comparison"""
+        self.mask_window_counter += 1
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Mask Results #{self.mask_window_counter}")
+        dialog.resize(1200, 800)
+        
+        # Make the dialog stay on top but non-modal
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowType.Window)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Create a graphics layout widget with 2x2 grid
+        graphics_widget = pg.GraphicsLayoutWidget()
+        layout.addWidget(graphics_widget)
+        
+        # Plot 1: Mask (top-left)
+        p1 = graphics_widget.addPlot(row=0, col=0, title="Mask")
+        img1 = pg.ImageItem()
+        img1.setImage(mask2D)
+        p1.addItem(img1)
+        hist1 = pg.HistogramLUTItem()
+        hist1.setImageItem(img1)
+        hist1.gradient.loadPreset("bipolar")
+        graphics_widget.addItem(hist1, row=0, col=1)
+        
+        # Plot 2: Masked Diff Sum (top-right)
+        p2 = graphics_widget.addPlot(row=0, col=2, title="Masked Diff Sum")
+        img2 = pg.ImageItem()
+        img2.setImage(masked_diff_sum)
+        p2.addItem(img2)
+        hist2 = pg.HistogramLUTItem()
+        hist2.setImageItem(img2)
+        hist2.gradient.loadPreset("viridis")
+        graphics_widget.addItem(hist2, row=0, col=3)
+        
+        # Plot 3: Masked Diff Image (bottom-left)
+        p3 = graphics_widget.addPlot(row=1, col=0, title="Masked Diff Image", colspan=2)
+        img3 = pg.ImageItem()
+        img3.setImage(masked_diff_img)
+        p3.addItem(img3)
+        hist3 = pg.HistogramLUTItem()
+        hist3.setImageItem(img3)
+        hist3.gradient.loadPreset("viridis")
+        graphics_widget.addItem(hist3, row=1, col=2)
+        
+        # Button layout
+        button_layout = QtWidgets.QHBoxLayout()
+        
+        # Add close this window button
+        btn_close = QtWidgets.QPushButton("Close This Window")
+        btn_close.clicked.connect(lambda: self.close_mask_window(dialog))
+        button_layout.addWidget(btn_close)
+        
+        # Add close all windows button
+        btn_close_all = QtWidgets.QPushButton("Close All Mask Windows")
+        btn_close_all.clicked.connect(self.close_all_mask_windows)
+        button_layout.addWidget(btn_close_all)
+        
+        layout.addLayout(button_layout)
+        
+        # Store reference and show non-modally
+        self.mask_result_windows.append(dialog)
+        dialog.show()
+    
+    def close_mask_window(self, dialog):
+        """Close a specific mask result window and remove from list"""
+        if dialog in self.mask_result_windows:
+            self.mask_result_windows.remove(dialog)
+        dialog.close()
+    
+    def close_all_mask_windows(self):
+        """Close all open mask result windows"""
+        for dialog in self.mask_result_windows:
+            dialog.close()
+        self.mask_result_windows.clear()
+        self.mask_window_counter = 0
+        print("All mask result windows closed")
     
     def save_mask_data(self):
         """Save mask and masked diff sum data as both TIFF and CSV files in a versioned folder"""
