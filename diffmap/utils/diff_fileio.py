@@ -42,6 +42,29 @@ warnings.simplefilter(action='ignore', category=UserWarning)
 
 det_params = {'merlin1':55, "merlin2":55, "eiger2_image":75}
 
+def normalize_detector_name(det_name):
+    """
+    Normalize detector name for data access.
+    Eiger detectors in scan plans (eiger1, eiger2, etc.) are stored as eiger{N}_image.
+    
+    Parameters
+    ----------
+    det_name : str
+        Detector name from scan plan
+        
+    Returns
+    -------
+    str
+        Normalized detector name for data access
+    """
+    if det_name is None:
+        return None
+    det_lower = det_name.lower()
+    # Check if it's an eiger detector and doesn't already have _image suffix
+    if 'eiger' in det_lower and not det_lower.endswith('_image'):
+        return f"{det_name}_image"
+    return det_name
+
 def parse_scan_range(str_scan_range):
     """
     Parse a string representing a list or range of scan numbers.
