@@ -753,17 +753,10 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         print(f"{np.shape(self.single_diff) = }")
         print(f"{self.mask2D.shape}")
 
-        plot1 = pg.image(self.mask2D)
-        plot1.setPredefinedGradient("bipolar")
-        # plot2 = pg.image(self.single_diff*self.mask2D)
-        # plot2.setPredefinedGradient("bipolar")
-
         masked_diff_sum, masked_diff_img = self.apply_mask_to_diff_stack(self.diff_stack,self.mask2D)
-        plot3 = pg.image(masked_diff_sum)
-        plot3.setPredefinedGradient("viridis")
         
-        plot4 = pg.image(masked_diff_img)
-        plot4.setPredefinedGradient("viridis")
+        # Show all plots in a single dialog window
+        self.show_mask_results_dialog(self.mask2D, masked_diff_sum, masked_diff_img)
 
     def apply_mask_to_diff_stack(self,diff_data_4d, mask):
 
@@ -771,6 +764,55 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
         self.masked_diff_sum, self.masked_diff_img = np.sum(masked_stack,axis = (-1,-2)), np.sum(masked_stack,axis = (0,1))
         return self.masked_diff_sum,self.masked_diff_img
+    
+    def show_mask_results_dialog(self, mask2D, masked_diff_sum, masked_diff_img):
+        """Display mask results in a single dialog window with all plots"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Mask Results")
+        dialog.resize(1200, 800)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Create a graphics layout widget with 2x2 grid
+        graphics_widget = pg.GraphicsLayoutWidget()
+        layout.addWidget(graphics_widget)
+        
+        # Plot 1: Mask (top-left)
+        p1 = graphics_widget.addPlot(row=0, col=0, title="Mask")
+        img1 = pg.ImageItem()
+        img1.setImage(mask2D)
+        p1.addItem(img1)
+        hist1 = pg.HistogramLUTItem()
+        hist1.setImageItem(img1)
+        hist1.gradient.setColorMap(pg.colormap.get("bipolar"))
+        graphics_widget.addItem(hist1, row=0, col=1)
+        
+        # Plot 2: Masked Diff Sum (top-right)
+        p2 = graphics_widget.addPlot(row=0, col=2, title="Masked Diff Sum")
+        img2 = pg.ImageItem()
+        img2.setImage(masked_diff_sum)
+        p2.addItem(img2)
+        hist2 = pg.HistogramLUTItem()
+        hist2.setImageItem(img2)
+        hist2.gradient.setColorMap(pg.colormap.get("viridis"))
+        graphics_widget.addItem(hist2, row=0, col=3)
+        
+        # Plot 3: Masked Diff Image (bottom-left)
+        p3 = graphics_widget.addPlot(row=1, col=0, title="Masked Diff Image", colspan=2)
+        img3 = pg.ImageItem()
+        img3.setImage(masked_diff_img)
+        p3.addItem(img3)
+        hist3 = pg.HistogramLUTItem()
+        hist3.setImageItem(img3)
+        hist3.gradient.setColorMap(pg.colormap.get("viridis"))
+        graphics_widget.addItem(hist3, row=1, col=2)
+        
+        # Add close button
+        btn_close = QtWidgets.QPushButton("Close")
+        btn_close.clicked.connect(dialog.accept)
+        layout.addWidget(btn_close)
+        
+        dialog.exec()
     
     def save_mask_data(self):
         """Save mask and masked diff sum data as both TIFF and CSV files in a versioned folder"""
