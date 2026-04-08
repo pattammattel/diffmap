@@ -11,6 +11,7 @@ import shutil
 import tifffile as tf
 from tqdm import tqdm
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     from hxntools.CompositeBroker import db
@@ -448,7 +449,7 @@ def _load_detector_stack(hdr, det, data_type='float32'):
             return np.array(f[data_name], dtype=data_type)  # np.array slightly faster than np.asarray for HDF5
 
     # Option 1: Multithreading for I/O-bound task (if on fast shared FS)
-    from concurrent.futures import ThreadPoolExecutor
+    
     with ThreadPoolExecutor(max_workers=min(4, len(files))) as executor:
         arrays = list(executor.map(read_file, files))
 
@@ -849,6 +850,110 @@ def export_diff_data_as_h5_single(
 
 
 
+def export_scan_details_batch(
+    sid_list,
+    wd=".",
+    return_dataframe=False
+):
+    """
+    Export scan metadata/details for a list of scan IDs to CSV.
+    
+    Parameters
+    ----------
+    sid_list : list of int
+        List of scan IDs to export
+    wd : str, optional
+        Working directory where CSV will be saved (default: ".")
+    return_dataframe : bool, optional
+        If True, returns a pandas DataFrame of the results (default: False)
+    
+    Returns
+    -------
+    pd.DataFrame or None
+        DataFrame of scan details if return_dataframe=True, else None
+    
+    Notes
+    -----
+    - Writes a CSV file named "scan_details_<first>_to_<last>_<timestamp>.csv"
+    - Handles errors gracefully and logs them in the CSV
+    - All fields from get_scan_details() are exported
+    
+    Example
+    -------
+    >>> export_scan_details_batch([200001, 200002, 200003], wd="/data/exports")
+    >>> df = export_scan_details_batch([200001, 200002], return_dataframe=True)
+    """
+    # Normalize to list
+    if isinstance(sid_list, (int, float)):
+        sid_list = [int(sid_list)]
+    
+    first_sid = sid_list[0]
+    last_sid = sid_list[-1]
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"scan_details_{first_sid}_to_{last_sid}_{timestamp}.csv"
+    log_path = os.path.join(wd, log_filename)
+    
+    all_rows = []
+    all_fields = set(['scan_id'])
+    os_user = os.getlogin() if hasattr(os, 'getlogin') else getpass.getuser()
+    
+    for sid in tqdm(sid_list, desc="Exporting scan details"):
+        try:
+            hdr = db[int(sid)]
+            # Get full metadata including baseline table
+            metadata_df = get_scan_metadata(hdr)
+            
+            # Convert DataFrame to dictionary (take first row if multiple)
+            if len(metadata_df) > 0:
+                row = metadata_df.iloc[0].to_dict()
+                # Ensure scan_id is present
+                if "scan_id" not in row:
+                    row["scan_id"] = sid
+            else:
+                row = {"scan_id": sid}
+            
+            # Handle nested dicts and lists by converting to strings
+            for key, value in list(row.items()):
+                if isinstance(value, dict):
+                    row[key] = str(value)
+                elif isinstance(value, (list, tuple)):
+                    row[key] = str(value)
+                elif pd.isna(value):
+                    row[key] = None
+            
+            all_rows.append(row)
+            all_fields.update(row.keys())
+        except Exception as e:
+            error_msg = f"Error processing scan {sid}: {e}"
+            print(error_msg)
+            all_rows.append({
+                "scan_id": sid,
+                "error": str(e),
+                "os_user": os_user
+            })
+            all_fields.update(["error", "os_user"])
+    
+    # Ensure all rows have all fields
+    all_fields = sorted(list(all_fields))
+    for row in all_rows:
+        for field in all_fields:
+            if field not in row:
+                row[field] = None
+    
+    # Write to CSV
+    with open(log_path, 'w', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=all_fields)
+        writer.writeheader()
+        for row in all_rows:
+            writer.writerow(row)
+    
+    print(f"✅ Scan details exported to: {log_path}")
+    
+    if return_dataframe:
+        return pd.DataFrame(all_rows)
+    return None
+
+
 def export_diff_data_as_h5_batch(
     sid_list,
     det="merlin1",
@@ -1059,6 +1164,10 @@ def export_selected_scan_details_to_csv(
 
 if __name__ == "__main__" or "get_ipython" in globals():
     print("\n✅ Diffraction data I/O module loaded.")
+    
+    print("\n#####📘 For exporting scan metadata only (no H5 data) ######:\n")
+    print("▶ export_scan_details_batch(sid_list, wd, return_dataframe)")
+    print("   → Exports scan metadata/details for a list of scans to CSV (no detector data).")
     
     print("\n#####📘 For export only use this ######:\n") 
     print("▶ export_diff_data_as_h5_batch(sid_list, det, wd, mon, compression, save_to_disk, copy_if_possible)")
