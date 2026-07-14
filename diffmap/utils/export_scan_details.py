@@ -79,8 +79,10 @@ def get_scan_details(hdr):
         elif "scan" in start_doc.keys():
             param_dict["scan"] = start_doc["scan"]
         
-        param_dict["zp_theta"] = np.round(df.zpsth.iloc[0], 3)
-        param_dict["mll_theta"] = np.round(df.dsth.iloc[0], 3)
+        if 'zpsth' in df.columns:
+            param_dict["zp_theta"] = np.round(df.zpsth.iloc[0], 3)
+        if 'dsth' in df.columns:
+            param_dict["mll_theta"] = np.round(df.dsth.iloc[0], 3)
         param_dict["energy"] = np.round(df.energy.iloc[0], 3)
         return param_dict
     
