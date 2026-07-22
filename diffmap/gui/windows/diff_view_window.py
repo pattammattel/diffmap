@@ -13,7 +13,7 @@ pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 from scipy.ndimage import center_of_mass
 from functools import wraps
 from PyQt6 import QtWidgets, uic, QtCore, QtGui, QtTest
-from PyQt6.QtWidgets import QMessageBox, QFileDialog,QErrorMessage,QDialog, QLabel, QVBoxLayout, QProgressBar
+from PyQt6.QtWidgets import QMessageBox, QFileDialog,QErrorMessage,QDialog, QLabel, QVBoxLayout, QProgressBar, QProgressDialog
 from PyQt6.QtCore import Qt,QObject, QTimer, QThread, pyqtSignal
 from pathlib import Path
 ui_path = Path(__file__).parent.parent / "layout"
@@ -79,29 +79,29 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
         print("ui loaded")
         
-        print("Skipping terminal redirect for now...")
+        #print("Skipping terminal redirect for now...")
         # TODO: Re-enable terminal redirect after fixing the issue
-        # try:
-        #     print("Inside try block...")
-        #     sys.stdout.flush()
-        #     if hasattr(self, 'terminal_output'):
-        #         print("terminal_output exists, setting up redirect...")
-        #         sys.stdout.flush()
-        #         self.setup_terminal_redirect()
-        #         print("Terminal redirect setup successful!")
-        #     else:
-        #         print("terminal_output widget not found, skipping terminal redirect")
-        # except Exception as e:
-        #     # Make sure we can see this error
-        #     sys.stdout = sys.__stdout__
-        #     sys.stderr = sys.__stderr__
-        #     print(f"Terminal redirect setup failed: {e}")
-        #     import traceback
-        #     traceback.print_exc()
-        #     # Continue without terminal redirect
+        try:
+            print("Inside try block...")
+            sys.stdout.flush()
+            if hasattr(self, 'terminal_output'):
+                print("terminal_output exists, setting up redirect...")
+                sys.stdout.flush()
+                self.setup_terminal_redirect()
+                print("Terminal redirect setup successful!")
+            else:
+                print("terminal_output widget not found, skipping terminal redirect")
+        except Exception as e:
+            # Make sure we can see this error
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            print(f"Terminal redirect setup failed: {e}")
+            import traceback
+            traceback.print_exc()
+            # Continue without terminal redirect
         
-        #sys.stdout = EmittingStream(text_written=self.normalOutputWritten)
-        #sys.stderr = EmittingStream(text_written=self.errorOutputWritten)
+        sys.stdout = EmittingStream(text_written=self.normalOutputWritten)
+        sys.stderr = EmittingStream(text_written=self.errorOutputWritten)
 
         print("Initializing variables...")
         sys.stdout.flush()
@@ -137,7 +137,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                                      "display_log":False,
                                     },
                                 "diff_img_settings":
-                                    {"lut":'turbo',
+                                    {"lut":'bipolar',
                                      "hist_lim":(None,None),
                                      "remove_hot_pixels":(True,5),
                                      "display_log":False,
@@ -280,16 +280,28 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         print(self.load_params)
         print(f"Loading {self.load_params['sid']} please wait...this may take a while...")
         
+        # Create and show progress dialog
+        progress = QProgressDialog("Loading diffraction data from database...", "Cancel", 0, 0, self)
+        progress.setWindowTitle("Loading Data")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
         
-        QtTest.QTest.qWait(1000)
-        #saves data to a default folder with sid name      
-        self.all_data = export_diff_data_as_h5_single(int(self.load_params['sid']),
-                        det=self.load_params['det'],
-                        wd= self.load_params['wd'],
-                        mon = self.load_params['mon'],
-                        save_to_disk= self.load_params.get('save_to_disk', True)
-                        )   
-        self.load_from_local_and_display() #looks for the filename matching with sid
+        try:
+            #saves data to a default folder with sid name      
+            self.all_data = export_diff_data_as_h5_single(int(self.load_params['sid']),
+                            det=self.load_params['det'],
+                            wd= self.load_params['wd'],
+                            mon = self.load_params['mon'],
+                            save_to_disk= self.load_params.get('save_to_disk', True)
+                            )
+            progress.setLabelText("Displaying images...")
+            QtWidgets.QApplication.processEvents()
+            self.load_from_local_and_display() #looks for the filename matching with sid
+        finally:
+            progress.close()
         #TODO add assertions and exceptions, thread it
 
 
@@ -300,21 +312,42 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         self.load_params['sid'] = real_sid
         print(self.load_params)
         print(f"Loading {self.load_params['sid']} please wait...this may take a while...")
-        self.all_data = export_diff_data_as_h5_single(int(self.load_params['sid']),
-                                                          self.load_params['det'],
-                                                          wd= self.load_params['wd'],
-                                                          mon = self.load_params['mon'],
-                                                          save_and_return=True
-                               )
-        print(f"{self.all_data.keys() = }")
         
-        self.display_diff_sum_img(self.all_data)
-        QtTest.QTest.qWait(1000)
-        self.cb_xrf_elem_list.blockSignals(True)
-        self.cb_xrf_elem_list.clear()
-        self.cb_xrf_elem_list.addItems(self.xrf_elem_list)
-        self.cb_xrf_elem_list.blockSignals(False)
-        self.display_xrf_img()
+        # Create and show progress dialog
+        progress = QProgressDialog("Loading diffraction data from database...", "Cancel", 0, 0, self)
+        progress.setWindowTitle("Loading Data")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
+        
+        try:
+            self.all_data = export_diff_data_as_h5_single(int(self.load_params['sid']),
+                                                              self.load_params['det'],
+                                                              wd= self.load_params['wd'],
+                                                              mon = self.load_params['mon'],
+                                                              save_and_return=True
+                                   )
+            print(f"{self.all_data.keys() = }")
+            
+            progress.setLabelText("Displaying diffraction sum image...")
+            QtWidgets.QApplication.processEvents()
+            self.display_diff_sum_img(self.all_data)
+            
+            progress.setLabelText("Updating XRF elements list...")
+            QtWidgets.QApplication.processEvents()
+            QtTest.QTest.qWait(100)
+            self.cb_xrf_elem_list.blockSignals(True)
+            self.cb_xrf_elem_list.clear()
+            self.cb_xrf_elem_list.addItems(self.xrf_elem_list)
+            self.cb_xrf_elem_list.blockSignals(False)
+            
+            progress.setLabelText("Displaying XRF image...")
+            QtWidgets.QApplication.processEvents()
+            self.display_xrf_img()
+        finally:
+            progress.close()
 
     def load_from_local_and_display(self):
         #self.create_load_params()
@@ -380,14 +413,28 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                 # Not blocking, just warn (per your rule we still go with user's input)
                 print(f"Warning: '{user_det}' is not in the allowed list {detector_list}; proceeding with user's value.")
 
+        # Create and show progress dialog
+        progress = QProgressDialog(f"Loading {fpath.name}...", "Cancel", 0, 0, self)
+        progress.setWindowTitle("Loading HDF5 File")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
+        
         try:
             print(f"Loading {fpath.name}; this may take a while")
+            progress.setLabelText(f"Reading data from {fpath.name}...")
+            QtWidgets.QApplication.processEvents()
+            
             self.all_data = unpack_diff_h5(str(fpath), det)
             print(f"{self.all_data.keys() = }")
 
             if hasattr(self, "le_workdir") and isinstance(self.le_workdir, QtWidgets.QLineEdit):
                 self.le_workdir.setText(str(fpath.parent))
 
+            progress.setLabelText("Displaying diffraction sum image...")
+            QtWidgets.QApplication.processEvents()
             self.display_diff_sum_img(self.all_data)
 
             QtWidgets.QApplication.processEvents(
@@ -395,6 +442,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             )
 
             if hasattr(self, "cb_xrf_elem_list") and hasattr(self, "xrf_elem_list"):
+                progress.setLabelText("Updating XRF elements list...")
+                QtWidgets.QApplication.processEvents()
                 blocker = QtCore.QSignalBlocker(self.cb_xrf_elem_list)
                 try:
                     self.cb_xrf_elem_list.clear()
@@ -403,6 +452,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                 finally:
                     del blocker
 
+            progress.setLabelText("Displaying XRF image...")
+            QtWidgets.QApplication.processEvents()
             self.display_xrf_img()
 
             # remember last dir:
@@ -414,6 +465,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                 "Failed to Load HDF5",
                 f"An error occurred while loading:\n{fpath}\n\n{exc}"
             )
+        finally:
+            progress.close()
 
 
     def create_pointer(self):
@@ -461,7 +514,17 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             raise ValueError(f"{np.shape(self.diff_stack)}; only works for data shape with (im1,im2,det1,det2) structure")
         # print(np.shape(self.diff_stack))
 
-        self.diff_sum_img = np.nansum(self.diff_stack, axis = (-2,-1))#memory efficient?
+        # Apply threshold to diff_stack before summing
+        if hasattr(self, 'load_params') and 'threshold' in self.load_params:
+            low_thresh, high_thresh = self.load_params['threshold']
+            print(f"Applying threshold: low={low_thresh}, high={high_thresh}")
+            # Create a copy to avoid modifying original data
+            thresholded_stack = self.diff_stack.copy()
+            # Mask values outside threshold range
+            thresholded_stack[(thresholded_stack < low_thresh) | (thresholded_stack > high_thresh)] = 0
+            self.diff_sum_img = np.nansum(thresholded_stack, axis = (-2,-1))
+        else:
+            self.diff_sum_img = np.nansum(self.diff_stack, axis = (-2,-1))#memory efficient?
         
         if not self.roi is None:
             self.p1_diff_img.removeItem(self.roi)
@@ -588,7 +651,14 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 self.points = []
                 pos = self.img_item_xrf.mapToParent(event.pos())
-                i, j = int(np.floor(pos.x())), int(np.floor(pos.y()))
+                # Check for NaN values and validate bounds
+                pos_x, pos_y = pos.x(), pos.y()
+                if np.isnan(pos_x) or np.isnan(pos_y):
+                    return
+                i, j = int(np.floor(pos_x)), int(np.floor(pos_y))
+                # Bounds check
+                if not (0 <= i < self.diff_stack.shape[1] and 0 <= j < self.diff_stack.shape[0]):
+                    return
                 self.points.append([i, j])
                 self.scatterItem.setData(pos=self.points)
                 self.single_diff = self.diff_stack[j,i, :,:]
@@ -648,7 +718,14 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 self.points = []
                 pos = self.img_item_diff_sum.mapToParent(event.pos())
-                i, j = int(np.floor(pos.x())), int(np.floor(pos.y()))
+                # Check for NaN values and validate bounds
+                pos_x, pos_y = pos.x(), pos.y()
+                if np.isnan(pos_x) or np.isnan(pos_y):
+                    return
+                i, j = int(np.floor(pos_x)), int(np.floor(pos_y))
+                # Bounds check
+                if not (0 <= i < self.diff_stack.shape[1] and 0 <= j < self.diff_stack.shape[0]):
+                    return
                 self.points.append([i, j])
                 self.scatterItem.setData(pos=self.points)
                 self.single_diff = self.diff_stack[j,i, :,:]
@@ -671,35 +748,48 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         """
         if event.isEnter():
             pos = self.img_item_xrf.mapToParent(event.pos())
-            i, j = int(np.floor(pos.x())), int(np.floor(pos.y()))
-            # Set bounds for clipping
-
-            #TODO does not work the hover event si,np.clip to avoid hovering outside
-            val = self.xrf_img[j, i]
-            #print(val)
-            self.statusbar.showMessage(f'pixel: {i, j} , {val = }')
+            # Check for NaN values
+            pos_x, pos_y = pos.x(), pos.y()
+            if np.isnan(pos_x) or np.isnan(pos_y):
+                return
+            i, j = int(np.floor(pos_x)), int(np.floor(pos_y))
+            # Bounds check
+            if hasattr(self, 'xrf_stack') and self.xrf_stack is not None:
+                if 0 <= i < self.xrf_stack.shape[2] and 0 <= j < self.xrf_stack.shape[1]:
+                    val = self.xrf_img[j, i]
+                    self.statusbar.showMessage(f'pixel: {i, j} , {val = }')
 
     def imageHoverEvent_diff(self, event = QtCore.QEvent):
         """Show the position, pixel, and value under the mouse cursor.
         """
         if event.isEnter():
             pos = self.img_item.mapToParent(event.pos())
-            i, j = int(np.floor(pos.x())), int(np.floor(pos.y()))
-            #TODO does not work the hover event si
-            val = self.single_diff[j, i]
-            #print(val)
-            self.statusbar.showMessage(f'pixel: {i, j} , {val = }')
+            # Check for NaN values
+            pos_x, pos_y = pos.x(), pos.y()
+            if np.isnan(pos_x) or np.isnan(pos_y):
+                return
+            i, j = int(np.floor(pos_x)), int(np.floor(pos_y))
+            # Bounds check
+            if hasattr(self, 'single_diff') and self.single_diff is not None:
+                if 0 <= i < self.single_diff.shape[1] and 0 <= j < self.single_diff.shape[0]:
+                    val = self.single_diff[j, i]
+                    self.statusbar.showMessage(f'pixel: {i, j} , {val = }')
 
     def imageHoverEvent_diff_sum(self, event = QtCore.QEvent):
         """Show the position, pixel, and value under the mouse cursor.
         """
         if event.isEnter():
             pos = self.img_item_diff_sum.mapToParent(event.pos())
-            i, j = int(np.floor(pos.x())), int(np.floor(pos.y()))
-            #TODO does not work the hover event si
-            val = self.diff_sum_img[j, i]
-            #print(val)
-            self.statusbar.showMessage(f'pixel: {i, j} , {val = }')
+            # Check for NaN values
+            pos_x, pos_y = pos.x(), pos.y()
+            if np.isnan(pos_x) or np.isnan(pos_y):
+                return
+            i, j = int(np.floor(pos_x)), int(np.floor(pos_y))
+            # Bounds check
+            if hasattr(self, 'diff_sum_img') and self.diff_sum_img is not None:
+                if 0 <= i < self.diff_sum_img.shape[1] and 0 <= j < self.diff_sum_img.shape[0]:
+                    val = self.diff_sum_img[j, i]
+                    self.statusbar.showMessage(f'pixel: {i, j} , {val = }')
     
     def toggle_hist_scale_diff(self, auto = False):        
         
