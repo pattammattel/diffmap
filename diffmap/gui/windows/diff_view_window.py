@@ -36,8 +36,34 @@ def remove_nan_inf(im):
 
 
 def remove_hot_pixels(image_array, NSigma=3):
-    image_array = remove_nan_inf(image_array)
-    image_array[abs(image_array) > np.std(image_array) * NSigma] = 0
+    """
+    Remove hot pixels using local median filter.
+    Hot pixels are isolated pixels that are significantly higher than their neighbors.
+    """
+    from scipy.ndimage import median_filter
+    
+    image_array = remove_nan_inf(image_array).copy()
+    
+    # Apply median filter to get local background
+    # Use a small kernel (3x3) to preserve real features
+    local_median = median_filter(image_array, size=3)
+    
+    # Calculate local deviation
+    deviation = image_array - local_median
+    
+    # Calculate threshold based on median absolute deviation of the deviations
+    mad = np.nanmedian(np.abs(deviation))
+    
+    if mad == 0:
+        return image_array
+    
+    # Identify hot pixels: those that are much higher than their local neighborhood
+    threshold = NSigma * mad
+    hot_pixel_mask = deviation > threshold
+    
+    # Replace hot pixels with the local median value
+    image_array[hot_pixel_mask] = local_median[hot_pixel_mask]
+    
     return image_array
 
 
@@ -79,29 +105,21 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
         print("ui loaded")
         
-        #print("Skipping terminal redirect for now...")
-        # TODO: Re-enable terminal redirect after fixing the issue
+        # Set up terminal output redirection
         try:
-            print("Inside try block...")
-            sys.stdout.flush()
             if hasattr(self, 'terminal_output'):
-                print("terminal_output exists, setting up redirect...")
-                sys.stdout.flush()
+                print("terminal_output widget found, setting up redirect...")
                 self.setup_terminal_redirect()
                 print("Terminal redirect setup successful!")
             else:
-                print("terminal_output widget not found, skipping terminal redirect")
+                print("terminal_output widget not found in UI, skipping terminal redirect")
         except Exception as e:
-            # Make sure we can see this error
+            # If terminal redirect fails, restore stdout and continue
             sys.stdout = sys.__stdout__
             sys.stderr = sys.__stderr__
             print(f"Terminal redirect setup failed: {e}")
             import traceback
             traceback.print_exc()
-            # Continue without terminal redirect
-        
-        sys.stdout = EmittingStream(text_written=self.normalOutputWritten)
-        sys.stderr = EmittingStream(text_written=self.errorOutputWritten)
 
         print("Initializing variables...")
         sys.stdout.flush()
@@ -137,7 +155,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                                      "display_log":False,
                                     },
                                 "diff_img_settings":
-                                    {"lut":'bipolar',
+                                    {"lut":'turbo',
                                      "hist_lim":(None,None),
                                      "remove_hot_pixels":(True,5),
                                      "display_log":False,
@@ -562,6 +580,13 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         # Item for displaying image data
         #self.img_item_diff_sum = pg.ImageItem(axisOrder = 'row-major')
         self.img_item_diff_sum = pg.ImageItem()
+        
+        # Apply hot pixel removal if enabled
+        if self.display_param["diff_sum_img_settings"]["remove_hot_pixels"][0]:
+            NSigma = self.display_param["diff_sum_img_settings"]["remove_hot_pixels"][1]
+            im_array = remove_hot_pixels(im_array, NSigma=NSigma)
+            print(f"Hot pixels removed from diff_sum_img with NSigma={NSigma}")
+        
         if self.display_param["diff_sum_img_settings"]["display_log"]:
             im_array = np.nan_to_num(np.log10(im_array), nan=np.nan, posinf=np.nan, neginf=np.nan)
         self.img_item_diff_sum.setImage(im_array, opacity=1)
@@ -619,9 +644,19 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         # Item for displaying image data
         #self.img_item_xrf = pg.ImageItem(axisOrder = 'row-major')
         self.img_item_xrf = pg.ImageItem()
+        
+        # Get the XRF image for display
+        xrf_display = self.xrf_stack[int(num)].copy()
+        
+        # Apply hot pixel removal if enabled
+        if self.display_param["xrf_img_settings"]["remove_hot_pixels"][0]:
+            NSigma = self.display_param["xrf_img_settings"]["remove_hot_pixels"][1]
+            xrf_display = remove_hot_pixels(xrf_display, NSigma=NSigma)
+            print(f"Hot pixels removed from XRF image with NSigma={NSigma}")
+        
         if self.display_param["xrf_img_settings"]["display_log"]:
-            self.xrf_stack = np.nan_to_num(np.log10(self.xrf_stack), nan=np.nan, posinf=np.nan, neginf=np.nan)
-        self.img_item_xrf.setImage(self.xrf_stack[int(num)], opacity=1)
+            xrf_display = np.nan_to_num(np.log10(xrf_display), nan=np.nan, posinf=np.nan, neginf=np.nan)
+        self.img_item_xrf.setImage(xrf_display, opacity=1)
         self.p1_xrf.addItem(self.img_item_xrf)
         
     
@@ -661,8 +696,13 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                     return
                 self.points.append([i, j])
                 self.scatterItem.setData(pos=self.points)
-                self.single_diff = self.diff_stack[j,i, :,:]
+                self.single_diff = self.diff_stack[j,i, :,:].copy()
                 self.display_param["diff_img_settings"]["display_log"] = self.cb_diff_log_scale.isChecked()
+                
+                # Apply hot pixel removal if enabled
+                if self.display_param["diff_img_settings"]["remove_hot_pixels"][0]:
+                    NSigma = self.display_param["diff_img_settings"]["remove_hot_pixels"][1]
+                    self.single_diff = remove_hot_pixels(self.single_diff, NSigma=NSigma)
 
                 if self.display_param["diff_img_settings"]["display_log"]:
                     self.single_diff = np.nan_to_num(np.log10(self.single_diff), nan=np.nan, posinf=np.nan, neginf=np.nan)
@@ -728,8 +768,13 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                     return
                 self.points.append([i, j])
                 self.scatterItem.setData(pos=self.points)
-                self.single_diff = self.diff_stack[j,i, :,:]
+                self.single_diff = self.diff_stack[j,i, :,:].copy()
                 self.display_param["diff_img_settings"]["display_log"] = self.cb_diff_log_scale.isChecked()
+                
+                # Apply hot pixel removal if enabled
+                if self.display_param["diff_img_settings"]["remove_hot_pixels"][0]:
+                    NSigma = self.display_param["diff_img_settings"]["remove_hot_pixels"][1]
+                    self.single_diff = remove_hot_pixels(self.single_diff, NSigma=NSigma)
 
                 if self.display_param["diff_img_settings"]["display_log"]:
                     self.single_diff = np.nan_to_num(np.log10(self.single_diff), nan=np.nan, posinf=np.nan, neginf=np.nan)
@@ -892,7 +937,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         p1.addItem(img1)
         hist1 = pg.HistogramLUTItem()
         hist1.setImageItem(img1)
-        hist1.gradient.loadPreset("bipolar")
+        hist1.gradient.loadPreset("grey")
         graphics_widget.addItem(hist1, row=0, col=1)
         
         # Plot 2: Masked Diff Sum (top-right)
