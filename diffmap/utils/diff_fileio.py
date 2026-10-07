@@ -956,6 +956,265 @@ def export_scan_details_batch(
     return None
 
 
+def _get_diff_detector(detectors, preferred=None):
+    """
+    Pick a diffraction detector name to locate raw files.
+    Returns `preferred` if it is in `detectors`, otherwise the first
+    merlin/eiger detector found, otherwise None.
+    """
+    diff_keywords = ("merlin", "eiger")
+    if preferred and preferred in detectors:
+        return preferred
+    for d in detectors:
+        if any(k in d.lower() for k in diff_keywords):
+            return d
+    return None
+
+
+def _relscan_scan_input(start_doc):
+    """
+    Build a fly-style scan_input ([start, end, num] per motor) for a rel_scan
+    by parsing the numeric values out of start_doc['plan_args'].
+    Returns an empty list if nothing usable is found.
+    """
+    plan_args = start_doc.get("plan_args", {})
+    args = plan_args.get("args", [])
+    num = plan_args.get("num", start_doc.get("num_points"))
+    # motor entries are strings; the (start, end) pairs are the numeric values
+    nums = [a for a in args if isinstance(a, (int, float))]
+    scan_input = []
+    for i in range(0, len(nums) - 1, 2):
+        scan_input.extend([nums[i], nums[i + 1], num])
+    return scan_input
+
+
+def get_scan_info(hdr, det="merlin1"):
+    """
+    Extract concise scan info from a header's start document.
+
+    Works for both 2D_FLY_PANDA (fly2dpd) and rel_scan (dscan) scans, pulling
+    sample, scan plan, uid, detectors, timestamp and the raw data path.
+
+    Parameters
+    ----------
+    hdr : header
+        Databroker header for the scan.
+    det : str, optional
+        Preferred diffraction detector used to locate the raw data path
+        (default: "merlin1"). Falls back to the first merlin/eiger detector
+        present in the scan if the preferred one is not used.
+
+    Returns
+    -------
+    dict
+        scan_id, uid, sample, scan_name, plan_name, scan_type, detectors,
+        motors, scan_input, sample_name, eiger_detector_distance, dwell,
+        diff_energy, diff_gamma, diff_delta, diff_det_distance, time,
+        raw_data_path
+    """
+    start_doc = hdr.start
+    if start_doc.get("plan_name") == "FlyPlan2D":
+        start_doc = convert_old_fly2d_start_doc(start_doc)
+
+    sid = start_doc.get("scan_id")
+    scan_block = start_doc.get("scan", {})
+    scan_type = scan_block.get("type", start_doc.get("plan_name"))
+
+    # fly2dpd stores detectors under start_doc["scan"]; rel_scan at top level
+    detectors = start_doc.get("detectors")
+    if not detectors and scan_block:
+        detectors = scan_block.get("detectors", [])
+    detectors = detectors or []
+
+    datetime_object = datetime.datetime.fromtimestamp(start_doc["time"])
+    formatted_time = datetime_object.strftime("%Y-%m-%d %H:%M:%S")
+
+    # scan geometry: fly2dpd stores it under start_doc["scan"]; rel_scan is parsed
+    scan_input = scan_block.get("scan_input")
+    if scan_input is None and start_doc.get("plan_name") == "rel_scan":
+        scan_input = _relscan_scan_input(start_doc)
+
+    det_for_path = _get_diff_detector(detectors, det)
+    raw_data_path = ""
+    if det_for_path is not None:
+        files = get_path(sid, normalize_detector_name(det_for_path))
+        raw_data_path = files[0] if files else ""
+
+    # diffraction geometry from the baseline (energy, gamma/delta angles, det distance)
+    # guarded because the baseline may lack the diff motors for some scans
+    diff_energy = diff_gamma = diff_delta = diff_det_distance = None
+    try:
+        diff_energy, diff_gamma, diff_delta, diff_det_distance = get_diff_det_params(sid)
+    except Exception as e:
+        print(f"[DIFF PARAMS] scan {sid}: could not compute diff detector params ({e})")
+
+    return {
+        "scan_id": sid,
+        "uid": start_doc.get("uid"),
+        "raw_data_path": raw_data_path,
+        "sample": start_doc.get("sample"),
+        "scan_name": start_doc.get("scan_name"),
+        "plan_name": start_doc.get("plan_name"),
+        "scan_type": scan_type,
+        "detectors": ",".join(detectors),
+        "motors": ",".join(start_doc.get("motors", [])),
+        "scan_input": scan_input or "",
+        "sample_name": scan_block.get("sample_name", ""),
+        # detector_distance is the Eiger sample-detector distance only (not Merlin)
+        "eiger_detector_distance": scan_block.get("detector_distance"),
+        "dwell": scan_block.get("dwell"),
+        # diffraction geometry derived from baseline motor positions
+        "diff_energy": diff_energy,
+        "diff_gamma": diff_gamma,
+        "diff_delta": diff_delta,
+        "diff_det_distance": diff_det_distance,
+        "time": formatted_time,
+    }
+
+def get_diff_det_params(sid):#,export_folder):
+    # save baseline, detector angle and roi setting for a scan
+    bl = db[sid].table('baseline')
+
+    diff_z = np.array(bl['diff_z'])[0]
+    diff_yaw = np.array(bl['diff_yaw'])[0] * np.pi / 180.0
+    diff_cz = np.array(bl['diff_cz'])[0]
+    diff_x = np.array(bl['diff_x'])[0]
+    diff_y1 = np.array(bl['diff_y1'])[0]
+    diff_y2 = np.array(bl['diff_y2'])[0]
+
+
+    gamma = diff_yaw
+    beta = 89.337 * np.pi / 180
+    z_yaw = 574.668 + 581.20 + diff_z
+    z1 = 574.668 + 395.2 + diff_z
+    z2 = z1 + 380
+    d = 395.2
+
+    x_yaw = np.sin(gamma) * z_yaw / np.sin(beta + gamma)
+    R_yaw = np.sin(beta) * z_yaw / np.sin(beta + gamma)
+    R1 = R_yaw - (z_yaw - z1)
+    R2 = R_yaw - (z_yaw - z2)
+
+    if abs(x_yaw + diff_x) > 3:
+        gamma = 0
+        delta = 0
+        #R_det = 500
+
+        beta = 89.337 * np.pi / 180
+        R_yaw = np.sin(beta) * z_yaw / np.sin(beta + gamma)
+        R1 = R_yaw - (z_yaw - z1)
+        R_det = R1 / np.cos(delta) - d + diff_cz
+
+    elif abs(diff_y1 / R1 - diff_y2 / R2) > 0.01:
+        gamma = 0
+        delta = 0
+        #R_det = 500
+
+        beta = 89.337 * np.pi / 180
+        R_yaw = np.sin(beta) * z_yaw / np.sin(beta + gamma)
+        R1 = R_yaw - (z_yaw - z1)
+        R_det = R1 / np.cos(delta) - d + diff_cz
+
+    else:
+        delta = np.arctan(diff_y1 / R1)
+        R_det = R1 / np.cos(delta) - d + diff_cz
+
+    
+
+    print('gamma, delta, dist:', gamma*180/np.pi, delta*180/np.pi, R_det)
+
+    return bl['energy'][1], gamma*180/np.pi, delta*180/np.pi, R_det*1000
+
+
+def export_scan_info_batch(
+    sid_list,
+    det="merlin1",
+    wd=".",
+    return_dataframe=False
+):
+    """
+    Export concise scan info (from the start document) for a list of scan IDs
+    to CSV. Works for both fly2dpd (2D_FLY_PANDA) and rel_scan (dscan) scans.
+
+    Parameters
+    ----------
+    sid_list : list of int
+        List of scan IDs to export.
+    det : str, optional
+        Preferred diffraction detector used to locate the raw data path
+        (default: "merlin1").
+    wd : str, optional
+        Working directory where the CSV will be saved (default: ".").
+    return_dataframe : bool, optional
+        If True, returns a pandas DataFrame of the results (default: False).
+
+    Returns
+    -------
+    pd.DataFrame or None
+        DataFrame of scan info if return_dataframe=True, else None.
+
+    Notes
+    -----
+    - Writes a CSV named "scan_info_<first>_to_<last>_<timestamp>.csv".
+    - Fields: scan_id, uid, sample, scan_name, plan_name, scan_type,
+      detectors, motors, scan_input, sample_name, eiger_detector_distance,
+      dwell, diff_energy, diff_gamma, diff_delta, diff_det_distance, time,
+      raw_data_path.
+
+    Example
+    -------
+    >>> export_scan_info_batch([349821, 350100], wd="/data/exports")
+    >>> df = export_scan_info_batch([349821, 350100], return_dataframe=True)
+    """
+    # Normalize to list
+    if isinstance(sid_list, (int, float)):
+        sid_list = [int(sid_list)]
+
+    first_sid = sid_list[0]
+    last_sid = sid_list[-1]
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"scan_info_{first_sid}_to_{last_sid}_{timestamp}.csv"
+    log_path = os.path.join(wd, log_filename)
+
+    fieldnames = [
+        "scan_id", "uid", "raw_data_path", "sample", "scan_name", "plan_name",
+        "scan_type", "detectors", "motors", "scan_input", "sample_name",
+        "eiger_detector_distance", "dwell", "diff_energy", "diff_gamma",
+        "diff_delta", "diff_det_distance", "time", "error",
+    ]
+    all_rows = []
+    os_user = os.getlogin() if hasattr(os, "getlogin") else getpass.getuser()
+
+    for sid in tqdm(sid_list, desc="Exporting scan info"):
+        try:
+            hdr = db[int(sid)]
+            row = get_scan_info(hdr, det=det)
+            row["error"] = None
+        except Exception as e:
+            error_msg = f"Error processing scan {sid}: {e}"
+            print(error_msg)
+            row = {"scan_id": sid, "error": str(e)}
+        all_rows.append(row)
+
+    # Ensure all rows have all fields
+    for row in all_rows:
+        for field in fieldnames:
+            if field not in row:
+                row[field] = None
+
+    with open(log_path, "w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in all_rows:
+            writer.writerow(row)
+
+    print(f"✅ Scan info exported to: {log_path}")
+
+    if return_dataframe:
+        return pd.DataFrame(all_rows)
+    return None
+
+
 def export_diff_data_as_h5_batch(
     sid_list,
     det="merlin1",
