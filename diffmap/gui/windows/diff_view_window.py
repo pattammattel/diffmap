@@ -717,8 +717,12 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         """
         Create a PolyLineROI centered at the image's center of mass.
         """
-        # Compute center of mass
-        com_y, com_x = center_of_mass(im_array)  # note: rows (y), cols (x)
+        # Log-scaled images contain NaNs (log10 of <=0), which make
+        # center_of_mass return NaN and break int() conversion below.
+        finite = np.nan_to_num(im_array, nan=0.0, posinf=0.0, neginf=0.0)
+        com_y, com_x = center_of_mass(finite)  # note: rows (y), cols (x)
+        if not (np.isfinite(com_y) and np.isfinite(com_x)):
+            com_y, com_x = im_array.shape[0] / 2, im_array.shape[1] / 2
 
         # ROI size relative to image
         sz = np.ceil(im_array.shape[0] * 0.2)  # 20% of height
@@ -738,6 +742,17 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             translateSnap=True,
         )
         self.roi.setZValue(10)
+
+        # Handles default to a 5px radius (ROI.handleSize), which users find too
+        # small to grab. Enlarge handleSize (used for future handles) and resize
+        # the vertex handles PolyLineROI already created in its constructor.
+        self.roi.handleSize = 12
+        for h in self.roi.handles:
+            handle = h["item"]
+            handle.radius = self.roi.handleSize
+            handle.buildPath()
+            handle._shape = None
+            handle.update()
         
 
     def get_mask_from_roi(self):
