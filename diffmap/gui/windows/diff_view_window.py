@@ -1,6 +1,7 @@
 
 import sys
 import os
+import re
 import json
 import collections
 import h5py
@@ -25,6 +26,17 @@ from diffmap.utils.diff_fileio import *
 #beamline specific
 detector_list = ["merlin1","merlin2", "eiger1", "eiger2"]
 scalars_list = ["None", "sclr1_ch1","sclr1_ch2","sclr1_ch3","sclr1_ch4","sclr1_ch5"]
+
+# ANSI SGR escape sequence (e.g. "\x1b[31m") used by IPython for colored output
+ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+
+# ANSI SGR foreground codes -> hex colors (VS Code dark palette, IPython-like)
+ANSI_COLORS = {
+    30: "#000000", 31: "#cd3131", 32: "#0dbc79", 33: "#e5e510",
+    34: "#2472c8", 35: "#bc3fbc", 36: "#11a8cd", 37: "#e5e5e5",
+    90: "#767676", 91: "#f14c4c", 92: "#23d18b", 93: "#f5f543",
+    94: "#3b8eea", 95: "#d670d6", 96: "#29b8db", 97: "#ffffff",
+}
 
 print("passed module loading")
 
@@ -201,36 +213,69 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         print("Terminal redirect complete!")
 
     def append_stdout(self, text):
+        self._append_ansi_text(text, "out", default_color=None)
+
+    def append_stderr(self, text):
+        # Default to red for plain (non-ANSI) tracebacks; ANSI codes still win.
+        self._append_ansi_text(text, "err", default_color="#f14c4c")
+
+    def _append_ansi_text(self, text, stream, default_color=None):
+        """Insert text into terminal_output, honoring ANSI SGR color codes.
+
+        Each stream keeps its own format state so stdout no longer inherits the
+        red color left over after an stderr/traceback write.
+        """
         try:
             cursor = self.terminal_output.textCursor()
             cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-            cursor.insertText(text)
+
+            attr = f"_ansi_fmt_{stream}"
+            fmt = getattr(self, attr, None)
+            if fmt is None:
+                fmt = QtGui.QTextCharFormat()
+                if default_color:
+                    fmt.setForeground(QtGui.QColor(default_color))
+
+            pos = 0
+            for match in ANSI_SGR_RE.finditer(text):
+                if match.start() > pos:
+                    cursor.insertText(text[pos:match.start()], fmt)
+                fmt = self._apply_ansi_sgr(fmt, match.group(1), default_color)
+                pos = match.end()
+            if pos < len(text):
+                cursor.insertText(text[pos:], fmt)
+
+            setattr(self, attr, fmt)
             self.terminal_output.setTextCursor(cursor)
             self.terminal_output.ensureCursorVisible()
         except Exception as e:
-            # If terminal output fails, restore stdout and print error
+            # If terminal output fails, restore streams to avoid recursion
             sys.stdout = sys.__stdout__
             sys.stderr = sys.__stderr__
-            print(f"Error in append_stdout: {e}")
+            print(f"Error in _append_ansi_text: {e}")
             import traceback
             traceback.print_exc()
 
-    def append_stderr(self, text):
-        try:
-            cursor = self.terminal_output.textCursor()
-            cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-            fmt = QtGui.QTextCharFormat()
-            fmt.setForeground(QtGui.QColor("red"))
-            cursor.insertText(text, fmt)
-            self.terminal_output.setTextCursor(cursor)
-            self.terminal_output.ensureCursorVisible()
-        except Exception as e:
-            # If terminal output fails, restore stdout and print error
-            sys.stdout = sys.__stdout__
-            sys.stderr = sys.__stderr__
-            print(f"Error in append_stderr: {e}")
-            import traceback
-            traceback.print_exc()
+    def _apply_ansi_sgr(self, fmt, codes_str, default_color):
+        """Return a QTextCharFormat updated for the given ANSI SGR parameters."""
+        codes = [int(c) for c in codes_str.split(";") if c] or [0]
+        for code in codes:
+            if code == 0:  # reset
+                fmt = QtGui.QTextCharFormat()
+                if default_color:
+                    fmt.setForeground(QtGui.QColor(default_color))
+            elif code == 1:  # bold
+                fmt.setFontWeight(QtGui.QFont.Weight.Bold)
+            elif code == 22:  # normal weight
+                fmt.setFontWeight(QtGui.QFont.Weight.Normal)
+            elif code == 39:  # default foreground
+                if default_color:
+                    fmt.setForeground(QtGui.QColor(default_color))
+                else:
+                    fmt.clearForeground()
+            elif code in ANSI_COLORS:
+                fmt.setForeground(QtGui.QColor(ANSI_COLORS[code]))
+        return fmt
 
 
     
