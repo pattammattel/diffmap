@@ -3,6 +3,7 @@ import sys
 import os
 import re
 import json
+import tempfile
 import collections
 import h5py
 import runpy
@@ -26,6 +27,9 @@ from diffmap.utils.diff_fileio import *
 #beamline specific
 detector_list = ["merlin1","merlin2", "eiger1", "eiger2"]
 scalars_list = ["None", "sclr1_ch1","sclr1_ch2","sclr1_ch3","sclr1_ch4","sclr1_ch5"]
+
+# Persisted GUI settings (wd, scan number, detector, etc.) in the user's temp dir
+CONFIG_PATH = Path(tempfile.gettempdir()) / "diffview_config.json"
 
 # ANSI SGR escape sequence (e.g. "\x1b[31m") used by IPython for colored output
 ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
@@ -167,6 +171,9 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         self.cb_det_list.setCurrentIndex(0)
         self.cb_norm_scalars.setCurrentIndex(4)
 
+        # Restore previously saved settings over the defaults set above
+        self.load_config()
+
         #connections
         print("Connecting signals...")
         self.pb_select_wd.clicked.connect(self.choose_wd)
@@ -186,8 +193,54 @@ class DiffViewWindow(QtWidgets.QMainWindow):
     
     def closeEvent(self, event):
         """Clean up when main window closes"""
+        self.save_config()
         self.close_all_mask_windows()
         event.accept()
+
+    def load_config(self):
+        """Restore previously saved GUI settings from the temp-folder config."""
+        if not CONFIG_PATH.exists():
+            return
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return
+
+        self.prev_config = config
+        self.le_wd.setText(config.get("wd", ""))
+        self.le_sid.setText(config.get("sid", ""))
+        self.le_batch_export.setText(config.get("batch_export", ""))
+
+        det_idx = self.cb_det_list.findText(config.get("det", ""))
+        if det_idx >= 0:
+            self.cb_det_list.setCurrentIndex(det_idx)
+
+        mon_idx = self.cb_norm_scalars.findText(config.get("mon", ""))
+        if mon_idx >= 0:
+            self.cb_norm_scalars.setCurrentIndex(mon_idx)
+
+        if "low_threshold" in config:
+            self.sb_low_threshold.setValue(config["low_threshold"])
+        if "high_threshold" in config:
+            self.sb_high_threshold.setValue(config["high_threshold"])
+        if "diff_log_scale" in config:
+            self.cb_diff_log_scale.setChecked(config["diff_log_scale"])
+
+    def save_config(self):
+        """Persist current GUI settings to the temp-folder config."""
+        config = {
+            "wd": self.le_wd.text(),
+            "sid": self.le_sid.text(),
+            "det": self.cb_det_list.currentText(),
+            "mon": self.cb_norm_scalars.currentText(),
+            "low_threshold": self.sb_low_threshold.value(),
+            "high_threshold": self.sb_high_threshold.value(),
+            "batch_export": self.le_batch_export.text(),
+            "diff_log_scale": self.cb_diff_log_scale.isChecked(),
+        }
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=4)
 
 
     def setup_terminal_redirect(self):
@@ -315,6 +368,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         
         if self.load_params['mon'] == 'None':
             self.load_params['mon'] = None
+
+        self.save_config()
 
 
     def load_and_save_from_db(self):
