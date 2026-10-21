@@ -97,27 +97,27 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         
         print("Skipping terminal redirect for now...")
         # TODO: Re-enable terminal redirect after fixing the issue
-        try:
-            print("Inside try block...")
-            sys.stdout.flush()
-            if hasattr(self, 'terminal_output'):
-                print("terminal_output exists, setting up redirect...")
-                sys.stdout.flush()
-                self.setup_terminal_redirect()
-                print("Terminal redirect setup successful!")
-            else:
-                print("terminal_output widget not found, skipping terminal redirect")
-        except Exception as e:
-            # Make sure we can see this error
-            sys.stdout = sys.__stdout__
-            sys.stderr = sys.__stderr__
-            print(f"Terminal redirect setup failed: {e}")
-            import traceback
-            traceback.print_exc()
-            # Continue without terminal redirect
+        # try:
+        #     print("Inside try block...")
+        #     sys.stdout.flush()
+        #     if hasattr(self, 'terminal_output'):
+        #         print("terminal_output exists, setting up redirect...")
+        #         sys.stdout.flush()
+        #         self.setup_terminal_redirect()
+        #         print("Terminal redirect setup successful!")
+        #     else:
+        #         print("terminal_output widget not found, skipping terminal redirect")
+        # except Exception as e:
+        #     # Make sure we can see this error
+        #     sys.stdout = sys.__stdout__
+        #     sys.stderr = sys.__stderr__
+        #     print(f"Terminal redirect setup failed: {e}")
+        #     import traceback
+        #     traceback.print_exc()
+        #     # Continue without terminal redirect
         
-        sys.stdout = EmittingStream(text_written=self.normalOutputWritten)
-        sys.stderr = EmittingStream(text_written=self.errorOutputWritten)
+        # sys.stdout = EmittingStream(text_written=self.normalOutputWritten)
+        # sys.stderr = EmittingStream(text_written=self.errorOutputWritten)
 
         print("Initializing variables...")
         sys.stdout.flush()
