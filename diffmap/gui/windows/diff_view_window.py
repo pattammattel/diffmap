@@ -881,32 +881,45 @@ class DiffViewWindow(QtWidgets.QMainWindow):
 
     def get_mask_from_roi(self):
 
-        # get the roi region:QPaintPathObject
-        roiShape = self.roi.mapToItem(self.img_item_diff_img, self.roi.shape())
-        
-        grid_shape = np.shape(self.single_diff)
+        # Busy loading screen while the mask is computed and applied
+        progress = QProgressDialog("Creating mask from ROI...", None, 0, 0, self)
+        progress.setWindowTitle("Creating Mask")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
 
-        # get data in the scatter plot
-        scatterData = np.meshgrid(np.arange(grid_shape[1]), np.arange(grid_shape[0]))
-        scatterData = np.reshape(scatterData,(2, grid_shape[0]*grid_shape[1]))
+        try:
+            # get the roi region:QPaintPathObject
+            roiShape = self.roi.mapToItem(self.img_item_diff_img, self.roi.shape())
 
-        #xprint(f"{np.shape(scatterData) = }")
+            grid_shape = np.shape(self.single_diff)
 
-        # generate a binary mask for points inside or outside the roishape
-        selected = [roiShape.contains(QtCore.QPointF(pt[0], pt[1])) for pt in scatterData.T]
+            # get data in the scatter plot
+            scatterData = np.meshgrid(np.arange(grid_shape[1]), np.arange(grid_shape[0]))
+            scatterData = np.reshape(scatterData,(2, grid_shape[0]*grid_shape[1]))
 
-        #print(f"{np.shape(selected) = }")
+            #xprint(f"{np.shape(scatterData) = }")
 
-        # # reshape the mask to image dimensions
-        self.mask2D = np.reshape(selected, (self.single_diff.shape))
+            # generate a binary mask for points inside or outside the roishape
+            selected = [roiShape.contains(QtCore.QPointF(pt[0], pt[1])) for pt in scatterData.T]
 
-        # # get masked image1
-        # self.maskedImage = self.mask2D * self.single_diff
-        print(f"{np.shape(self.single_diff) = }")
-        print(f"{self.mask2D.shape}")
+            #print(f"{np.shape(selected) = }")
 
-        masked_diff_sum, masked_diff_img = self.apply_mask_to_diff_stack(self.diff_stack,self.mask2D)
-        
+            # # reshape the mask to image dimensions
+            self.mask2D = np.reshape(selected, (self.single_diff.shape))
+
+            # # get masked image1
+            # self.maskedImage = self.mask2D * self.single_diff
+            print(f"{np.shape(self.single_diff) = }")
+            print(f"{self.mask2D.shape}")
+
+            progress.setLabelText("Applying mask to diffraction stack...")
+            QtWidgets.QApplication.processEvents()
+            masked_diff_sum, masked_diff_img = self.apply_mask_to_diff_stack(self.diff_stack,self.mask2D)
+        finally:
+            progress.close()
+
         # Show all plots in a single dialog window
         self.show_mask_results_dialog(self.mask2D, masked_diff_sum, masked_diff_img)
 
@@ -936,6 +949,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         
         # Plot 1: Mask (top-left)
         p1 = graphics_widget.addPlot(row=0, col=0, title="Mask")
+        p1.getViewBox().invertY(True)  # origin at top-left, matching main window
         img1 = pg.ImageItem()
         img1.setImage(mask2D)
         p1.addItem(img1)
@@ -946,6 +960,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         
         # Plot 2: Masked Diff Sum (top-right)
         p2 = graphics_widget.addPlot(row=0, col=2, title="Masked Diff Sum")
+        p2.getViewBox().invertY(True)
         img2 = pg.ImageItem()
         img2.setImage(masked_diff_sum)
         p2.addItem(img2)
@@ -956,6 +971,7 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         
         # Plot 3: Masked Diff Image (bottom-left)
         p3 = graphics_widget.addPlot(row=1, col=0, title="Masked Diff Image", colspan=2)
+        p3.getViewBox().invertY(True)
         img3 = pg.ImageItem()
         img3.setImage(masked_diff_img)
         p3.addItem(img3)
