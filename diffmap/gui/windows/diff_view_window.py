@@ -72,11 +72,19 @@ def show_error_message_box(func):
 class EmittingStream(QObject):
     text_written = pyqtSignal(str)
 
+    def __init__(self, original=None):
+        super().__init__()
+        # Keep the real stream so output is teed to the console and errors stay visible
+        self._original = original
+
     def write(self, text):
+        if self._original is not None:
+            self._original.write(text)
         self.text_written.emit(str(text))
 
     def flush(self):
-        pass
+        if self._original is not None:
+            self._original.flush()
 
 class DiffViewWindow(QtWidgets.QMainWindow):
 
@@ -94,30 +102,13 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         layout.setContentsMargins(20, 10, 20, 10)  # e.g., 20px left/right margins
 
         print("ui loaded")
-        
-        print("Skipping terminal redirect for now...")
-        # TODO: Re-enable terminal redirect after fixing the issue
-        # try:
-        #     print("Inside try block...")
-        #     sys.stdout.flush()
-        #     if hasattr(self, 'terminal_output'):
-        #         print("terminal_output exists, setting up redirect...")
-        #         sys.stdout.flush()
-        #         self.setup_terminal_redirect()
-        #         print("Terminal redirect setup successful!")
-        #     else:
-        #         print("terminal_output widget not found, skipping terminal redirect")
-        # except Exception as e:
-        #     # Make sure we can see this error
-        #     sys.stdout = sys.__stdout__
-        #     sys.stderr = sys.__stderr__
-        #     print(f"Terminal redirect setup failed: {e}")
-        #     import traceback
-        #     traceback.print_exc()
-        #     # Continue without terminal redirect
-        
-        # sys.stdout = EmittingStream(text_written=self.normalOutputWritten)
-        # sys.stderr = EmittingStream(text_written=self.errorOutputWritten)
+
+        # Redirect stdout/stderr into the in-GUI terminal. EmittingStream tees to
+        # the real console so startup errors remain visible if something fails.
+        if hasattr(self, 'terminal_output'):
+            self.setup_terminal_redirect()
+        else:
+            print("terminal_output widget not found, skipping terminal redirect")
 
         print("Initializing variables...")
         sys.stdout.flush()
@@ -248,22 +239,16 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         if not hasattr(self, 'terminal_output'):
             print("Warning: terminal_output widget not found in UI, skipping terminal redirect")
             return
-        
-        print("Creating EmittingStream objects...")
-        sys.stdout.flush()
-        self.stdout_stream = EmittingStream()
-        self.stderr_stream = EmittingStream()
 
-        print("Connecting signals...")
-        sys.stdout.flush()
+        # Tee to the real streams so output still reaches the console
+        self.stdout_stream = EmittingStream(sys.__stdout__)
+        self.stderr_stream = EmittingStream(sys.__stderr__)
+
         self.stdout_stream.text_written.connect(self.append_stdout)
         self.stderr_stream.text_written.connect(self.append_stderr)
 
-        print("Redirecting stdout and stderr...")
-        sys.stdout.flush()
         sys.stdout = self.stdout_stream
         sys.stderr = self.stderr_stream
-        print("Terminal redirect complete!")
 
     def append_stdout(self, text):
         self._append_ansi_text(text, "out", default_color=None)
