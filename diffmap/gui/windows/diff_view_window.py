@@ -15,7 +15,7 @@ pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 from scipy.ndimage import center_of_mass
 from functools import wraps
 from PyQt6 import QtWidgets, uic, QtCore, QtGui, QtTest
-from PyQt6.QtWidgets import QMessageBox, QFileDialog,QErrorMessage,QDialog, QLabel, QVBoxLayout, QProgressBar
+from PyQt6.QtWidgets import QMessageBox, QFileDialog,QErrorMessage,QDialog, QLabel, QVBoxLayout, QProgressBar, QProgressDialog
 from PyQt6.QtCore import Qt,QObject, QTimer, QThread, pyqtSignal
 from pathlib import Path
 ui_path = Path(__file__).parent.parent / "layout"
@@ -385,21 +385,41 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         self.load_params['sid'] = real_sid
         print(self.load_params)
         print(f"Loading {self.load_params['sid']} please wait...this may take a while...")
-        self.all_data = export_diff_data_as_h5_single(int(self.load_params['sid']),
-                                                          self.load_params['det'],
-                                                          wd= self.load_params['wd'],
-                                                          mon = self.load_params['mon'],
-                                                          save_and_return=True
-                               )
-        print(f"{self.all_data.keys() = }")
-        
-        self.display_diff_sum_img(self.all_data)
-        QtTest.QTest.qWait(1000)
-        self.cb_xrf_elem_list.blockSignals(True)
-        self.cb_xrf_elem_list.clear()
-        self.cb_xrf_elem_list.addItems(self.xrf_elem_list)
-        self.cb_xrf_elem_list.blockSignals(False)
-        self.display_xrf_img()
+
+        # Busy loading screen while data is fetched/displayed
+        progress = QProgressDialog("Loading diffraction data from database...", None, 0, 0, self)
+        progress.setWindowTitle("Loading Data")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
+
+        try:
+            self.all_data = export_diff_data_as_h5_single(int(self.load_params['sid']),
+                                                              self.load_params['det'],
+                                                              wd= self.load_params['wd'],
+                                                              mon = self.load_params['mon'],
+                                                              save_and_return=True
+                                   )
+            print(f"{self.all_data.keys() = }")
+
+            progress.setLabelText("Displaying diffraction sum image...")
+            QtWidgets.QApplication.processEvents()
+            self.display_diff_sum_img(self.all_data)
+            QtTest.QTest.qWait(1000)
+
+            progress.setLabelText("Updating XRF elements list...")
+            QtWidgets.QApplication.processEvents()
+            self.cb_xrf_elem_list.blockSignals(True)
+            self.cb_xrf_elem_list.clear()
+            self.cb_xrf_elem_list.addItems(self.xrf_elem_list)
+            self.cb_xrf_elem_list.blockSignals(False)
+
+            progress.setLabelText("Displaying XRF image...")
+            QtWidgets.QApplication.processEvents()
+            self.display_xrf_img()
+        finally:
+            progress.close()
 
     def load_from_local_and_display(self):
         #self.create_load_params()
@@ -465,14 +485,27 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                 # Not blocking, just warn (per your rule we still go with user's input)
                 print(f"Warning: '{user_det}' is not in the allowed list {detector_list}; proceeding with user's value.")
 
+        # Busy loading screen while the HDF5 file is read and displayed
+        progress = QProgressDialog(f"Loading {fpath.name}...", None, 0, 0, self)
+        progress.setWindowTitle("Loading HDF5 File")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
+
         try:
             print(f"Loading {fpath.name}; this may take a while")
+            progress.setLabelText(f"Reading data from {fpath.name}...")
+            QtWidgets.QApplication.processEvents()
+
             self.all_data = unpack_diff_h5(str(fpath), det)
             print(f"{self.all_data.keys() = }")
 
             if hasattr(self, "le_workdir") and isinstance(self.le_workdir, QtWidgets.QLineEdit):
                 self.le_workdir.setText(str(fpath.parent))
 
+            progress.setLabelText("Displaying diffraction sum image...")
+            QtWidgets.QApplication.processEvents()
             self.display_diff_sum_img(self.all_data)
 
             QtWidgets.QApplication.processEvents(
@@ -480,6 +513,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
             )
 
             if hasattr(self, "cb_xrf_elem_list") and hasattr(self, "xrf_elem_list"):
+                progress.setLabelText("Updating XRF elements list...")
+                QtWidgets.QApplication.processEvents()
                 blocker = QtCore.QSignalBlocker(self.cb_xrf_elem_list)
                 try:
                     self.cb_xrf_elem_list.clear()
@@ -488,6 +523,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                 finally:
                     del blocker
 
+            progress.setLabelText("Displaying XRF image...")
+            QtWidgets.QApplication.processEvents()
             self.display_xrf_img()
 
             # remember last dir:
@@ -499,6 +536,8 @@ class DiffViewWindow(QtWidgets.QMainWindow):
                 "Failed to Load HDF5",
                 f"An error occurred while loading:\n{fpath}\n\n{exc}"
             )
+        finally:
+            progress.close()
 
 
     def create_pointer(self):
