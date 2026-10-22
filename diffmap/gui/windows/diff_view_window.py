@@ -579,6 +579,9 @@ class DiffViewWindow(QtWidgets.QMainWindow):
         assert scan_y * scan_x == num_frames, "Mismatch between scan shape and data shape"
         # Reshape to (scan_y, scan_x, self.roi_y, self.roi_x)
         self.diff_stack = data.reshape(scan_y, scan_x, self.roi_y, self.roi_x)
+        # Detector frames are stored with rows/cols swapped relative to display; transpose detector axes only.
+        self.diff_stack = self.diff_stack.transpose(0, 1, 3, 2)
+        self.roi_y, self.roi_x = self.roi_x, self.roi_y
 
 
         if self.diff_stack.ndim != 4:
