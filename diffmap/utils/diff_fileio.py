@@ -457,7 +457,8 @@ def _load_detector_stack(hdr, det, data_type='float32'):
 
     # Concatenate if needed
     data = arrays[0] if len(arrays) == 1 else np.concatenate(arrays, axis=0)
-    return np.flip(data, axis=1)
+    # Store raw detector orientation; the single geometry flip is applied at read time.
+    return data
 
 
 def _read_group_as_dict(group):
@@ -808,8 +809,14 @@ def export_relscan_as_h5_single(
                 else:
                     print(f"[EXPORT ERROR] Scan {sid} has no diff columns, skipping diff_det_config")
     if save_and_return:
+        def load_det():
+            # Apply the single geometry flip once at read time (axis=1).
+            if os.path.exists(out_fn):
+                with h5py.File(out_fn, "r") as f:
+                    return np.flip(f[f"/diff_data/{det}/det_images"][()], 1)
+            return np.flip(raw, axis=1)
         return {
-            "det_images": raw,
+            "det_images": load_det(),
             "Io": Io,
             "scan_positions": scan_positions,
             "scan_params": {"motors": motors, "shape": shape},
@@ -1331,7 +1338,8 @@ def unpack_diff_h5(filename, det="merlin1"):
     with h5py.File(filename, "r") as f:
         # 1) diff_data
         dd = f["diff_data"][det]
-        result["det_images"] = dd["det_images"][()]
+        # Apply the single geometry flip once at read time (axis=1) to match export return.
+        result["det_images"] = np.flip(dd["det_images"][()], axis=1)
         result["Io"] = dd["Io"][()] if "Io" in dd else None
 
         # 2) scalar_data
